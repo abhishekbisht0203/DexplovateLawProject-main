@@ -2,6 +2,7 @@ const express = require('express');
 const { User } = require('../models/User'); // Ensure your User model is correct
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const nodemailer = require('nodemailer'); // <-- Added for sending emails
 const {
   validateRegistrationStep1,
   validateRegistrationStep2,
@@ -15,7 +16,6 @@ const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey';
 const otpStore = {};
 
 // ------------------ JWT Middleware ------------------ //
-// This middleware verifies the user's session token from a cookie or header.
 const verifyUser = (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -94,7 +94,6 @@ router.post('/login', async (req, res) => {
 });
 
 // ------------------ PROFILE ------------------ //
-// This route is protected by `verifyUser` middleware.
 router.get('/profile', verifyUser, async (req, res) => {
   try {
     const user = await User.getUserById(req.user.userId);
@@ -102,7 +101,6 @@ router.get('/profile', verifyUser, async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    // Exclude the password hash from the response for security
     const { password_hash, ...userProfile } = user;
 
     res.json({
@@ -135,8 +133,26 @@ router.post('/send-otp', validateRegistrationStep1, async (req, res) => {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     otpStore[email] = otp;
 
-    // TODO: Integrate an email service here to send the OTP
-    console.log(`Sending OTP ${otp} to ${email}`);
+    // You'll need to configure a transporter with your email service credentials
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: 'harishsinghbisht0203@gmail.com', // <-- Updated email
+        pass: 'vqqt otjx dkdb tcdh', // <-- Updated with your App Password
+      },
+    });
+
+    const mailOptions = {
+      from: 'harishsinghbisht0203@gmail.com', // Sender address
+      to: email, // Recipient address
+      subject: 'Your OTP for D Law-Firm Account', // Email subject
+      text: `Your One-Time Password (OTP) is: ${otp}. This code is valid for 5 minutes.`, // Plain text body
+      html: `<p>Your One-Time Password (OTP) is: <b>${otp}</b></p><p>This code is valid for 5 minutes.</p>`, // HTML body
+    };
+
+    await transporter.sendMail(mailOptions);
+
+    console.log(`Sending OTP to ${email}`);
 
     res.json({
       success: true,
@@ -155,18 +171,16 @@ router.post('/verify-otp', async (req, res) => {
   try {
     const { email, otp, ...userData } = req.body;
 
-    if (otpStore[email] !== otp) {
+    if (!otpStore[email] || otpStore[email] !== otp) {
       return res.status(400).json({ success: false, message: 'Invalid or expired OTP' });
     }
 
-    // OTP is valid, now create the user
     const user = await User.createUser({
       ...userData,
       email,
       email_verified: true,
     });
 
-    // Clean up the OTP store
     delete otpStore[email];
 
     const token = jwt.sign(
@@ -200,7 +214,6 @@ router.post('/verify-otp', async (req, res) => {
 });
 
 // ------------------ STEP 2 REGISTER ------------------ //
-// This route is protected by `verifyUser` middleware.
 router.post(
   '/register/step2',
   verifyUser,
@@ -260,7 +273,6 @@ router.post(
 );
 
 // ------------------ AVAILABILITY CHECKERS ------------------ //
-// These routes check if a value (email, etc.) is already in use.
 router.post('/check-email', async (req, res) => {
   try {
     const { email } = req.body;
