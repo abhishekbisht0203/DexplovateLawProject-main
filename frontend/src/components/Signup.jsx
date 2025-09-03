@@ -1,482 +1,422 @@
-// src/components/Signup.jsx
-"use client";
-
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import { Link, useNavigate } from 'react-router-dom';
 import {
-  Eye,
-  EyeOff,
-  CheckCircle,
-  AlertCircle,
-  ArrowLeft,
-  Loader2,
-} from "lucide-react";
+  FaEye,
+  FaEyeSlash,
+  FaCheckCircle,
+  FaExclamationCircle,
+} from 'react-icons/fa';
+
+// Use this for local development
+const API_BASE_URL = 'http://localhost:5000/api/auth';
 
 const Signup = () => {
-  const [currentStep, setCurrentStep] = useState(1);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showRePassword, setShowRePassword] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [passwordValidation, setPasswordValidation] = useState({
-    length: false,
-    uppercase: false,
-    lowercase: false,
-    number: false,
-    special: false,
-  });
   const [formData, setFormData] = useState({
-    username: "",
-    email: "",
-    password: "",
-    rePassword: "",
-    phoneNumber: "",
-    firmName: "",
-    firmAddress: "",
-    licenseNumber: "",
-    agreeTerms: false,
+    username: '',
+    email: '',
+    phoneNumber: '',
+    password: '',
+    confirmPassword: '',
+    firmName: '',
+    firmAddress: '',
+    licenseNumber: '',
   });
-  const [validationErrors, setValidationErrors] = useState({});
 
-  const API_BASE_URL = "http://localhost:5000/api/auth";
+  const [otp, setOtp] = useState('');
+  const [currentStep, setCurrentStep] = useState(1);
+  const [passwordShown, setPasswordShown] = useState(false);
+  const [confirmPasswordShown, setConfirmPasswordShown] = useState(false);
+  const [validation, setValidation] = useState({});
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
 
+  // No longer checking for user from AuthContext to prevent errors
   useEffect(() => {
-    const debounce = (func, delay) => {
-      let timeoutId;
-      return (...args) => {
-        clearTimeout(timeoutId);
-        timeoutId = setTimeout(() => func(...args), delay);
-      };
-    };
+    // Keeping this section for future redirection logic
+  }, [navigate]);
 
-    const debouncedCheck = debounce(async (name, value) => {
-      if (!value) return;
-
-      let endpoint = '';
-      if (name === 'email') endpoint = 'check-email';
-      else if (name === 'firmName') endpoint = 'check-firm-name';
-      else if (name === 'licenseNumber') endpoint = 'check-license';
-      
-      if (!endpoint) return;
-
-      try {
-        const response = await fetch(`${API_BASE_URL}/${endpoint}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ [name]: value }),
-        });
-        const data = await response.json();
-        setValidationErrors((prev) => ({
-          ...prev,
-          [name]: data.available ? "" : data.message,
-        }));
-      } catch (error) {
-        console.error(`Error checking ${name}:`, error);
-      }
-    }, 500);
-
-    debouncedCheck('email', formData.email);
-    debouncedCheck('firmName', formData.firmName);
-    debouncedCheck('licenseNumber', formData.licenseNumber);
-  }, [formData.email, formData.firmName, formData.licenseNumber]);
-
-  useEffect(() => {
-    const password = formData.password;
-    const validation = {
+  const validatePassword = (password) => {
+    return {
       length: password.length >= 8,
       uppercase: /[A-Z]/.test(password),
       lowercase: /[a-z]/.test(password),
-      number: /\d/.test(password),
-      special: /[!@#$%^&*(),.?":{}|<>]/.test(password),
+      number: /[0-9]/.test(password),
+      special: /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?]/.test(password),
     };
-    setPasswordValidation(validation);
+  };
+
+  useEffect(() => {
+    const password = formData.password;
+    if (password) {
+      setValidation(validatePassword(password));
+    }
   }, [formData.password]);
 
-  const handleInputChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: type === "checkbox" ? checked : value,
-    }));
-    if (validationErrors[name]) {
-      setValidationErrors((prev) => ({ ...prev, [name]: "" }));
-    }
+  const isStep1Valid = () => {
+    const { username, email, phoneNumber, password, confirmPassword } = formData;
+    const passwordValidation = validatePassword(password);
+    return (
+      username.trim() !== '' &&
+      email.trim() !== '' &&
+      phoneNumber.trim() !== '' &&
+      Object.values(passwordValidation).every((isValid) => isValid) &&
+      password === confirmPassword
+    );
   };
 
-  const handleStep1Submit = async (e) => {
+  const isStep2Valid = () => {
+    const { firmName, firmAddress, licenseNumber } = formData;
+    return (
+      firmName.trim() !== '' &&
+      firmAddress.trim() !== '' &&
+      licenseNumber.trim() !== ''
+    );
+  };
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleNext = async (e) => {
     e.preventDefault();
-    setIsLoading(true);
-
-    const errors = {};
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(formData.email)) {
-      errors.email = "Please enter a valid email address";
-    }
-    if (formData.phoneNumber.length !== 10 || !/^\d+$/.test(formData.phoneNumber)) {
-      errors.phoneNumber = "Please enter a valid 10-digit phone number";
-    }
-    if (formData.password !== formData.rePassword) {
-      errors.rePassword = "Passwords do not match";
-    }
-    const allPasswordRequirementsMet = Object.values(passwordValidation).every((req) => req);
-    if (!allPasswordRequirementsMet) {
-      errors.password = "Password must meet all requirements";
-    }
-
-    if (Object.keys(errors).length > 0) {
-      setValidationErrors(errors);
-      setIsLoading(false);
+    if (!isStep1Valid()) {
+      setError('Please fill in all fields correctly.');
       return;
     }
 
+    setLoading(true);
+    setError(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/register/step1`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username: formData.username,
-          email: formData.email,
-          phoneNumber: formData.phoneNumber,
-          password: formData.password,
-        }),
+      const response = await axios.post(`${API_BASE_URL}/send-otp`, {
+        username: formData.username,
+        email: formData.email,
+        phoneNumber: formData.phoneNumber,
+        password: formData.password,
+        confirmPassword: formData.confirmPassword
       });
 
-      const data = await response.json();
-      if (response.ok) {
+      if (response.data.success) {
         setCurrentStep(2);
       } else {
-        setValidationErrors(data.errors || { general: data.message });
+        setError(response.data.message);
       }
-    } catch (error) {
-      console.error("Registration Step 1 Error:", error);
-      setValidationErrors({ general: "An unexpected error occurred. Please try again." });
+    } catch (err) {
+      setError(err.response?.data?.message || 'Network error. Please try again.');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  const handleStep2Submit = async (e) => {
+  const handleVerifyOtp = async (e) => {
     e.preventDefault();
-    setIsLoading(true);
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await axios.post(`${API_BASE_URL}/verify-otp`, {
+        ...formData,
+        otp: otp,
+      });
 
-    const errors = {};
-    if (!formData.firmName) errors.firmName = "Firm name is required";
-    if (!formData.firmAddress) errors.firmAddress = "Firm address is required";
-    if (!formData.licenseNumber) errors.licenseNumber = "License number is required";
-    
-    if (Object.keys(errors).length > 0) {
-      setValidationErrors(errors);
-      setIsLoading(false);
+      if (response.data.success) {
+        setCurrentStep(3);
+      } else {
+        setError(response.data.message);
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'Network error. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCompleteRegistration = async (e) => {
+    e.preventDefault();
+    if (!isStep2Valid()) {
+      setError('Please fill in all firm details.');
       return;
     }
 
+    setLoading(true);
+    setError(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/register/step2`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const response = await axios.post(
+        `${API_BASE_URL}/register/step2`,
+        {
           firmName: formData.firmName,
           firmAddress: formData.firmAddress,
           licenseNumber: formData.licenseNumber,
-        }),
-      });
-      const data = await response.json();
-      if (response.ok) {
-        setCurrentStep(3);
+        },
+        { withCredentials: true }
+      );
+
+      if (response.data.success) {
+        navigate('/dashboard');
       } else {
-        setValidationErrors(data.errors || { general: data.message });
+        setError(response.data.message);
       }
-    } catch (error) {
-      console.error("Registration Step 2 Error:", error);
-      setValidationErrors({ general: "An unexpected error occurred. Please try again." });
+    } catch (err) {
+      setError(err.response?.data?.message || 'Network error. Please try again.');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
-  const handleFinalSubmit = () => {
-    console.log("Registration complete, redirecting to dashboard...");
-  };
-
-  const prevStep = () => {
-    if (currentStep === 2) setCurrentStep(1);
-  };
-
-  const inputBase =
-    "w-full px-4 py-2.5 rounded-md border border-gray-300 bg-gray-50 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500";
-  const labelBase = "text-sm font-medium text-gray-700";
-  const errorText = "text-sm text-red-600 mt-1";
-
-  const CardHeader = ({ title, subtitle }) => (
-    <div className="mb-6">
-      <div className="flex items-center justify-between text-gray-600 mb-4">
-        <button
-          type="button"
-          onClick={() => (currentStep === 1 ? window.history.back() : prevStep())}
-          className="inline-flex items-center gap-2 text-gray-500 hover:text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
-          disabled={isLoading}
-        >
-          <ArrowLeft className="h-5 w-5" />
-          <span className="text-sm">{currentStep === 1 ? "Back" : "Go Back"}</span>
-        </button>
-        <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-lg bg-gray-800 text-white flex items-center justify-center font-bold">
-            D
-          </div>
-          <span className="font-semibold text-gray-800">LaW‑Firm</span>
-        </div>
-        <div className="w-8" />
-      </div>
-      <h1 className="text-2xl font-semibold text-gray-800 text-center">{title}</h1>
-      {subtitle && (
-        <p className="text-sm text-gray-500 text-center mt-1">
-          {subtitle}
-        </p>
-      )}
-    </div>
-  );
-
   const renderStep1 = () => (
-    <form onSubmit={handleStep1Submit}>
-      <CardHeader title="Create Account" subtitle="Step 1 of 2: Personal information" />
-      <div className="space-y-4">
-        <div>
-          <label className={labelBase}>Username</label>
-          <input
-            type="text"
-            name="username"
-            value={formData.username}
-            onChange={handleInputChange}
-            placeholder="ex: Jane Doe"
-            className={inputBase}
-            required
-          />
-        </div>
-        <div>
-          <label className={labelBase}>Email <span className="text-red-500">*</span></label>
-          <div className="relative">
-            <input
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleInputChange}
-              placeholder="ex: sam@email.com"
-              className={`${inputBase} pr-9`}
-              required
-            />
-            {validationErrors.email && (
-              <AlertCircle className="h-5 w-5 text-red-500 absolute right-2.5 top-1/2 -translate-y-1/2" />
-            )}
-          </div>
-          {validationErrors.email && <p className={errorText}>{validationErrors.email}</p>}
-        </div>
-        <div>
-          <label className={labelBase}>Phone Number</label>
-          <div className="flex">
-            <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-gray-300 bg-gray-100 text-gray-600 text-sm">
-              +91
-            </span>
-            <input
-              type="tel"
-              name="phoneNumber"
-              value={formData.phoneNumber}
-              onChange={handleInputChange}
-              placeholder="10 digits"
-              maxLength={10}
-              className={`${inputBase} rounded-l-none`}
-              required
-            />
-          </div>
-          {validationErrors.phoneNumber && <p className={errorText}>{validationErrors.phoneNumber}</p>}
-        </div>
-        <div>
-          <label className={labelBase}>Password <span className="text-red-500">*</span></label>
-          <div className="relative">
-            <input
-              type={showPassword ? "text" : "password"}
-              name="password"
-              value={formData.password}
-              onChange={handleInputChange}
-              placeholder="Create a strong password"
-              className={`${inputBase} pr-10`}
-              required
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword((s) => !s)}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-            >
-              {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-            </button>
-          </div>
-          {formData.password && (
-            <ul className="mt-2 space-y-1 text-xs text-gray-600">
-              <li className={`flex items-center gap-1 ${passwordValidation.length ? "text-emerald-600" : ""}`}>
-                {passwordValidation.length ? <CheckCircle className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}
-                At least 8 characters
-              </li>
-              <li className={`flex items-center gap-1 ${passwordValidation.uppercase ? "text-emerald-600" : ""}`}>
-                {passwordValidation.uppercase ? <CheckCircle className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}
-                One uppercase letter
-              </li>
-              <li className={`flex items-center gap-1 ${passwordValidation.lowercase ? "text-emerald-600" : ""}`}>
-                {passwordValidation.lowercase ? <CheckCircle className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}
-                One lowercase letter
-              </li>
-              <li className={`flex items-center gap-1 ${passwordValidation.number ? "text-emerald-600" : ""}`}>
-                {passwordValidation.number ? <CheckCircle className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}
-                One number
-              </li>
-              <li className={`flex items-center gap-1 ${passwordValidation.special ? "text-emerald-600" : ""}`}>
-                {passwordValidation.special ? <CheckCircle className="h-3 w-3" /> : <AlertCircle className="h-3 w-3" />}
-                One special character
-              </li>
-            </ul>
-          )}
-          {validationErrors.password && <p className={errorText}>{validationErrors.password}</p>}
-        </div>
-        <div>
-          <label className={labelBase}>Confirm Password</label>
-          <div className="relative">
-            <input
-              type={showRePassword ? "text" : "password"}
-              name="rePassword"
-              value={formData.rePassword}
-              onChange={handleInputChange}
-              placeholder="Re-enter your password"
-              className={`${inputBase} pr-10`}
-              required
-            />
-            <button
-              type="button"
-              onClick={() => setShowRePassword((s) => !s)}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-            >
-              {showRePassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-            </button>
-          </div>
-          {validationErrors.rePassword && <p className={errorText}>{validationErrors.rePassword}</p>}
-        </div>
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            id="agreeTerms"
-            name="agreeTerms"
-            checked={formData.agreeTerms}
-            onChange={handleInputChange}
-            className="h-4 w-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
-            required
-          />
-          <label htmlFor="agreeTerms" className="text-sm text-gray-600">
-            I agree to the Terms and Conditions and Privacy Policy
-          </label>
-        </div>
-        <button
-          type="submit"
-          disabled={isLoading || !formData.agreeTerms}
-          className="w-full rounded-md bg-emerald-500 hover:bg-emerald-600 disabled:bg-gray-300 text-white font-semibold py-2.5 transition-colors flex items-center justify-center gap-2"
-        >
-          {isLoading && <Loader2 className="h-5 w-5 animate-spin" />}
-          {isLoading ? "Verifying..." : "Create Account"}
-        </button>
+    <form className="space-y-4" onSubmit={handleNext}>
+      <div>
+        <label className="block text-gray-700 font-bold" htmlFor="username">
+          Username
+        </label>
+        <input
+          type="text"
+          name="username"
+          value={formData.username}
+          onChange={handleChange}
+          required
+          placeholder="ex. Jane Doe"
+          className="w-full px-4 py-2 mt-1 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition duration-300"
+        />
       </div>
+      <div>
+        <label className="block text-gray-700 font-bold" htmlFor="email">
+          Email *
+        </label>
+        <input
+          type="email"
+          name="email"
+          value={formData.email}
+          onChange={handleChange}
+          required
+          placeholder="ex. sam@email.com"
+          className="w-full px-4 py-2 mt-1 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition duration-300"
+        />
+      </div>
+      <div>
+        <label className="block text-gray-700 font-bold" htmlFor="phoneNumber">
+          Phone Number
+        </label>
+        <div className="flex items-center mt-1">
+          <span className="bg-gray-200 px-3 py-2 rounded-l-lg border border-gray-300 border-r-0 text-gray-600">
+            +91
+          </span>
+          <input
+            type="tel"
+            name="phoneNumber"
+            value={formData.phoneNumber}
+            onChange={handleChange}
+            placeholder="10 digits"
+            className="w-full px-4 py-2 border border-gray-300 rounded-r-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition duration-300"
+          />
+        </div>
+      </div>
+      <div>
+        <label className="block text-gray-700 font-bold" htmlFor="password">
+          Password *
+        </label>
+        <div className="relative mt-1">
+          <input
+            type={passwordShown ? 'text' : 'password'}
+            name="password"
+            value={formData.password}
+            onChange={handleChange}
+            required
+            placeholder="Create a strong password"
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition duration-300"
+          />
+          <button
+            type="button"
+            onClick={() => setPasswordShown(!passwordShown)}
+            className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500"
+          >
+            {passwordShown ? <FaEyeSlash /> : <FaEye />}
+          </button>
+        </div>
+        <ul className="text-xs mt-2 space-y-1">
+          <li className={`flex items-center ${validation.length ? 'text-green-500' : 'text-gray-500'}`}>
+            {validation.length ? <FaCheckCircle className="mr-2" /> : <FaExclamationCircle className="mr-2" />}
+            At least 8 characters
+          </li>
+          <li className={`flex items-center ${validation.uppercase ? 'text-green-500' : 'text-gray-500'}`}>
+            {validation.uppercase ? <FaCheckCircle className="mr-2" /> : <FaExclamationCircle className="mr-2" />}
+            One uppercase letter
+          </li>
+          <li className={`flex items-center ${validation.lowercase ? 'text-green-500' : 'text-gray-500'}`}>
+            {validation.lowercase ? <FaCheckCircle className="mr-2" /> : <FaExclamationCircle className="mr-2" />}
+            One lowercase letter
+          </li>
+          <li className={`flex items-center ${validation.number ? 'text-green-500' : 'text-gray-500'}`}>
+            {validation.number ? <FaCheckCircle className="mr-2" /> : <FaExclamationCircle className="mr-2" />}
+            One number
+          </li>
+          <li className={`flex items-center ${validation.special ? 'text-green-500' : 'text-gray-500'}`}>
+            {validation.special ? <FaCheckCircle className="mr-2" /> : <FaExclamationCircle className="mr-2" />}
+            One special character
+          </li>
+        </ul>
+      </div>
+      <div>
+        <label className="block text-gray-700 font-bold" htmlFor="confirmPassword">
+          Confirm Password
+        </label>
+        <div className="relative mt-1">
+          <input
+            type={confirmPasswordShown ? 'text' : 'password'}
+            name="confirmPassword"
+            value={formData.confirmPassword}
+            onChange={handleChange}
+            required
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition duration-300"
+          />
+          <button
+            type="button"
+            onClick={() => setConfirmPasswordShown(!confirmPasswordShown)}
+            className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500"
+          >
+            {confirmPasswordShown ? <FaEyeSlash /> : <FaEye />}
+          </button>
+        </div>
+        {formData.password && formData.confirmPassword && formData.password !== formData.confirmPassword && (
+          <p className="text-red-500 text-sm mt-1">Passwords do not match</p>
+        )}
+      </div>
+      <div className="flex items-center mt-4">
+        <input
+          type="checkbox"
+          id="terms"
+          name="terms"
+          required
+          className="form-checkbox h-4 w-4 text-teal-600 rounded"
+        />
+        <label htmlFor="terms" className="ml-2 text-sm text-gray-600">
+          I agree to the Terms and Conditions and Privacy Policy
+        </label>
+      </div>
+      {error && <div className="text-red-500 text-center mt-4">{error}</div>}
+      <button
+        type="submit"
+        className="w-full bg-teal-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-teal-700 transition duration-300 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-opacity-50"
+        disabled={loading}
+      >
+        {loading ? 'Sending OTP...' : 'Next Step'}
+      </button>
     </form>
   );
 
   const renderStep2 = () => (
-    <form onSubmit={handleStep2Submit}>
-      <CardHeader title="Create Account" subtitle="Step 2 of 2: Professional information" />
-      <div className="space-y-4">
-        <div>
-          <label className={labelBase}>Law Firm Name</label>
-          <div className="relative">
-            <input
-              type="text"
-              name="firmName"
-              value={formData.firmName}
-              onChange={handleInputChange}
-              placeholder="Enter your law firm name"
-              className={`${inputBase} pr-9`}
-              required
-            />
-            {validationErrors.firmName && (
-              <AlertCircle className="h-5 w-5 text-red-500 absolute right-2.5 top-1/2 -translate-y-1/2" />
-            )}
-          </div>
-          {validationErrors.firmName && <p className={errorText}>{validationErrors.firmName}</p>}
-        </div>
-        <div>
-          <label className={labelBase}>Firm Address</label>
-          <textarea
-            name="firmAddress"
-            value={formData.firmAddress}
-            onChange={handleInputChange}
-            placeholder="Enter complete firm address"
-            rows={4}
-            className={`${inputBase} resize-none`}
-            required
-          />
-        </div>
-        <div>
-          <label className={labelBase}>License Number</label>
-          <div className="relative">
-            <input
-              type="text"
-              name="licenseNumber"
-              value={formData.licenseNumber}
-              onChange={handleInputChange}
-              placeholder="Enter license number"
-              className={`${inputBase} pr-9`}
-              required
-            />
-            {validationErrors.licenseNumber && (
-              <AlertCircle className="h-5 w-5 text-red-500 absolute right-2.5 top-1/2 -translate-y-1/2" />
-            )}
-          </div>
-          {validationErrors.licenseNumber && <p className={errorText}>{validationErrors.licenseNumber}</p>}
-        </div>
-        <div className="flex gap-3">
-          <button
-            type="button"
-            onClick={prevStep}
-            disabled={isLoading}
-            className="flex-1 rounded-md border border-gray-300 bg-white text-gray-700 py-2.5 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Go Back
-          </button>
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="flex-1 rounded-md bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-2.5 flex items-center justify-center gap-2"
-          >
-            {isLoading && <Loader2 className="h-5 w-5 animate-spin" />}
-            {isLoading ? "Completing..." : "Complete Registration"}
-          </button>
-        </div>
+    <form className="space-y-4" onSubmit={handleVerifyOtp}>
+      <div>
+        <label className="block text-gray-700 font-bold" htmlFor="otp">
+          OTP
+        </label>
+        <input
+          type="text"
+          name="otp"
+          value={otp}
+          onChange={(e) => setOtp(e.target.value)}
+          required
+          placeholder="123456"
+          className="w-full px-4 py-2 mt-1 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition duration-300"
+        />
+        <p className="text-sm text-gray-500 mt-1">A verification code has been sent to your email.</p>
       </div>
+      {error && <div className="text-red-500 text-center mt-4">{error}</div>}
+      <button
+        type="submit"
+        className="w-full bg-teal-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-teal-700 transition duration-300 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-opacity-50"
+        disabled={loading}
+      >
+        {loading ? 'Verifying...' : 'Verify OTP'}
+      </button>
     </form>
   );
 
   const renderStep3 = () => (
-    <div>
-      <CardHeader title="Registration Complete" />
-      <div className="rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-emerald-700 flex items-center gap-2">
-        <CheckCircle className="h-5 w-5" />
-        <p className="text-sm">Your law firm has been successfully registered.</p>
+    <form className="space-y-4" onSubmit={handleCompleteRegistration}>
+      <div>
+        <label className="block text-gray-700 font-bold" htmlFor="firmName">
+          Law Firm Name
+        </label>
+        <input
+          type="text"
+          name="firmName"
+          value={formData.firmName}
+          onChange={handleChange}
+          required
+          placeholder="ex. Jane Doe Law Firm"
+          className="w-full px-4 py-2 mt-1 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition duration-300"
+        />
       </div>
+      <div>
+        <label className="block text-gray-700 font-bold" htmlFor="firmAddress">
+          Firm Address
+        </label>
+        <input
+          type="text"
+          name="firmAddress"
+          value={formData.firmAddress}
+          onChange={handleChange}
+          required
+          placeholder="ex. 123 Main Street, Anytown"
+          className="w-full px-4 py-2 mt-1 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition duration-300"
+        />
+      </div>
+      <div>
+        <label className="block text-gray-700 font-bold" htmlFor="licenseNumber">
+          License Number
+        </label>
+        <input
+          type="text"
+          name="licenseNumber"
+          value={formData.licenseNumber}
+          onChange={handleChange}
+          required
+          placeholder="ex. 5555"
+          className="w-full px-4 py-2 mt-1 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 transition duration-300"
+        />
+      </div>
+      {error && <div className="text-red-500 text-center mt-4">{error}</div>}
       <button
-        onClick={handleFinalSubmit}
-        className="mt-6 w-full rounded-md bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-2.5"
+        type="submit"
+        className="w-full bg-teal-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-teal-700 transition duration-300 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-opacity-50"
+        disabled={loading}
       >
-        Go to Dashboard
+        {loading ? 'Completing...' : 'Complete Registration'}
       </button>
-    </div>
+    </form>
   );
 
+  const renderStep = () => {
+    switch (currentStep) {
+      case 1:
+        return renderStep1();
+      case 2:
+        return renderStep2();
+      case 3:
+        return renderStep3();
+      default:
+        return null;
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-gray-100 flex items-center justify-center px-4 py-8">
-      <div className="w-full max-w-md rounded-3xl bg-white shadow-xl border border-gray-200 p-6">
-        {currentStep === 1 && renderStep1()}
-        {currentStep === 2 && renderStep2()}
-        {currentStep === 3 && renderStep3()}
+    <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+      <div className="w-full max-w-md rounded-3xl bg-white shadow-xl border border-gray-200 p-8 m-4">
+        <div className="flex justify-between items-center mb-6">
+          <Link to="/" className="text-gray-500 hover:text-teal-600 transition duration-300">
+            &larr; Go Back
+          </Link>
+          <div className="flex-shrink-0">
+            <h1 className="text-2xl font-bold text-gray-800">D LAw-Firm</h1>
+          </div>
+        </div>
+        <div className="text-center mb-6">
+          <h2 className="text-3xl font-bold text-gray-800 mb-1">Create Account</h2>
+          <p className="text-gray-500">Step {currentStep} of 3: {currentStep === 1 ? 'Personal Information' : currentStep === 2 ? 'Verify OTP' : 'Professional Information'}</p>
+        </div>
+        {renderStep()}
       </div>
     </div>
   );

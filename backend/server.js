@@ -1,51 +1,53 @@
 const express = require('express');
-const bodyParser = require('body-parser');
+const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const dotenv = require('dotenv');
-const cors = require('cors');
+const { registrationLimiter, generalLimiter, errorHandler } = require('./middleware/security');
 const authRoutes = require('./routes/auth');
-const { errorHandler } = require('./middleware/security');
 
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
 
-// Middleware
+// Set up middleware
 app.use(express.json());
-app.use(bodyParser.json());
+app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// ✅ Fix CORS
+// Dynamic CORS configuration
+const frontendUrl = process.env.VITE_FRONTEND_URL || 'http://localhost:5173';
 app.use(cors({
-  origin: "http://localhost:5173", // frontend
-  credentials: true
+  origin: frontendUrl,
+  credentials: true,
 }));
 
-// Test route
-app.get('/api/health', (req, res) => {
-  res.status(200).json({ status: 'ok', message: 'Law Firm Backend is healthy' });
+// Simple health check routes
+app.get('/api', (req, res) => {
+  res.json({ message: 'API is running' });
 });
 
-// Auth routes
+app.get('/api/health', (req, res) => {
+  res.json({ message: 'API is healthy' });
+});
+
+// Profile route for session check
+app.get('/profile', (req, res) => {
+  // This is a placeholder. You'll need to add your actual session/cookie logic here.
+  // For now, it will return a generic success message.
+  res.status(200).json({ success: true, message: 'Profile route is working' });
+});
+
+// Apply security middleware to specific routes
+app.use('/api/auth/register/step1', registrationLimiter);
+app.use('/api/auth', generalLimiter);
+
+// Main API routes
 app.use('/api/auth', authRoutes);
 
-// ✅ Add profile route (demo)
-app.get('/api/profile', (req, res) => {
-  res.json({
-    username: "John Doe",
-    email: "john@example.com",
-    phone: "+91 9876543210"
-  });
-});
-
-// Error handler
+// Error handling middleware
 app.use(errorHandler);
 
-// Start server
+const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
-  console.log(`🚀 Law Firm Backend Server running on port ${PORT}`);
-  console.log(`📍 API Base URL: http://localhost:${PORT}/api`);
-  console.log(`🏥 Health Check: http://localhost:${PORT}/api/health`);
-  console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Server running on port ${PORT}`);
 });

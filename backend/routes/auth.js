@@ -10,7 +10,12 @@ const {
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey';
 
+// In-memory store for OTPs, for demonstration purposes only.
+// In a production app, use a database like Redis.
+const otpStore = {};
+
 // ------------------ JWT Middleware ------------------ //
+// This middleware verifies the user's session token from a cookie or header.
 const verifyUser = (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -63,9 +68,9 @@ router.post('/login', async (req, res) => {
 
     res.cookie('token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production', // Use HTTPS in prod
-      sameSite: 'lax', // Fixes frontend cookie sending
-      maxAge: 24 * 60 * 60 * 1000, // 1 day
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 24 * 60 * 60 * 1000,
     });
 
     res.json({
@@ -89,6 +94,7 @@ router.post('/login', async (req, res) => {
 });
 
 // ------------------ PROFILE ------------------ //
+// This route is protected by `verifyUser` middleware.
 router.get('/profile', verifyUser, async (req, res) => {
   try {
     const user = await User.getUserById(req.user.userId);
@@ -96,11 +102,12 @@ router.get('/profile', verifyUser, async (req, res) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
+    // Exclude the password hash from the response for security
     const { password_hash, ...userProfile } = user;
 
     res.json({
       success: true,
-      data: userProfile,
+      data: { user: userProfile },
     });
   } catch (error) {
     console.error('Profile fetch error:', error);
@@ -110,11 +117,12 @@ router.get('/profile', verifyUser, async (req, res) => {
   }
 });
 
-// ------------------ STEP 1 REGISTER ------------------ //
-router.post('/register/step1', validateRegistrationStep1, async (req, res) => {
+// ------------------ SEND OTP ------------------ //
+router.post('/send-otp', validateRegistrationStep1, async (req, res) => {
   try {
-    const { username, email, phoneNumber, password } = req.body;
+    const { email } = req.body;
 
+    // Check for existing email and phone number
     const emailExists = await User.emailExists(email);
     if (emailExists) {
       return res.status(409).json({
@@ -123,21 +131,43 @@ router.post('/register/step1', validateRegistrationStep1, async (req, res) => {
       });
     }
 
-    const phoneExists = await User.phoneNumberExists(phoneNumber);
-    if (phoneExists) {
-      return res.status(409).json({
-        success: false,
-        message: 'Phone number already registered',
-      });
+    // Generate and store OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    otpStore[email] = otp;
+
+    // TODO: Integrate an email service here to send the OTP
+    console.log(`Sending OTP ${otp} to ${email}`);
+
+    res.json({
+      success: true,
+      message: 'OTP sent successfully. Check your email.',
+    });
+  } catch (error) {
+    console.error('Send OTP Error:', error);
+    res
+      .status(500)
+      .json({ success: false, message: 'Error sending OTP' });
+  }
+});
+
+// ------------------ VERIFY OTP AND REGISTER USER ------------------ //
+router.post('/verify-otp', async (req, res) => {
+  try {
+    const { email, otp, ...userData } = req.body;
+
+    if (otpStore[email] !== otp) {
+      return res.status(400).json({ success: false, message: 'Invalid or expired OTP' });
     }
 
+    // OTP is valid, now create the user
     const user = await User.createUser({
-      username,
+      ...userData,
       email,
-      phoneNumber,
-      password,
       email_verified: true,
     });
+
+    // Clean up the OTP store
+    delete otpStore[email];
 
     const token = jwt.sign(
       { userId: user.id, email: user.email },
@@ -145,9 +175,16 @@ router.post('/register/step1', validateRegistrationStep1, async (req, res) => {
       { expiresIn: '24h' }
     );
 
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 24 * 60 * 60 * 1000,
+    });
+
     res.status(201).json({
       success: true,
-      message: 'Step 1 complete. Continue with firm details.',
+      message: 'User registered and OTP verified successfully. Continue with firm details.',
       data: {
         token,
         userId: user.id,
@@ -157,14 +194,13 @@ router.post('/register/step1', validateRegistrationStep1, async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Step1 Registration Error:', error);
-    res
-      .status(500)
-      .json({ success: false, message: 'Error during step 1 registration' });
+    console.error('OTP Verification Error:', error);
+    res.status(500).json({ success: false, message: 'Error during OTP verification' });
   }
 });
 
 // ------------------ STEP 2 REGISTER ------------------ //
+// This route is protected by `verifyUser` middleware.
 router.post(
   '/register/step2',
   verifyUser,
@@ -224,6 +260,7 @@ router.post(
 );
 
 // ------------------ AVAILABILITY CHECKERS ------------------ //
+// These routes check if a value (email, etc.) is already in use.
 router.post('/check-email', async (req, res) => {
   try {
     const { email } = req.body;

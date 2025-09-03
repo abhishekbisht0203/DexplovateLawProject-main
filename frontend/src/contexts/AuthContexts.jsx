@@ -1,44 +1,36 @@
-/* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useState, useEffect, useContext } from "react";
-import axios from "axios";
+import React, { createContext, useState, useEffect, useContext } from 'react';
+import axios from 'axios';
 
-// Backend API URL from environment variables
-const API_URL = import.meta.env.VITE_API_URL;
+// Create AuthContext to provide authentication state to the app
+const AuthContext = createContext();
 
-// Axios instance (with credentials for httpOnly cookie)
+// Backend API URL (assumes a local backend is running)
+// This should be set in a .env file for production, but we'll hardcode it for this example.
+const API_URL = 'http://localhost:5000/api/auth';
+
+// Axios instance with credentials for httpOnly cookies
 const axiosInstance = axios.create({
   baseURL: API_URL,
   withCredentials: true,
 });
 
-// Create AuthContext
-const AuthContext = createContext();
-
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Check session on initial app load
+  // Check the authentication status when the component mounts
   useEffect(() => {
     const checkAuthStatus = async () => {
       try {
-        // First try to get user from localStorage
-        const storedUser = localStorage.getItem("user");
-        if (storedUser) {
-          setUser(JSON.parse(storedUser));
-        }
-
-        // Verify session with backend
-        const { data } = await axiosInstance.get("/profile");
+        const { data } = await axiosInstance.get('/profile');
         if (data.success) {
-          setUser(data.data.user);
-          localStorage.setItem("user", JSON.stringify(data.data.user));
+          setUser(data.user);
         } else {
-          throw new Error("Session invalid");
+          // If the session is invalid, the backend will return an error
+          setUser(null);
         }
       } catch (error) {
-        console.log("No active session found:", error.message);
-        localStorage.removeItem("user");
+        console.error("No active session found:", error.message);
         setUser(null);
       } finally {
         setLoading(false);
@@ -48,75 +40,30 @@ export const AuthProvider = ({ children }) => {
     checkAuthStatus();
   }, []);
 
-  // Login with email/password
   const login = async (email, password) => {
     try {
-      const response = await axiosInstance.post("/login", { email, password });
+      const response = await axiosInstance.post('/login', { email, password });
       if (response.data.success) {
         setUser(response.data.user);
-        localStorage.setItem("user", JSON.stringify(response.data.user));
         return response.data.user;
       } else {
-        throw new Error(response.data.message || "Login failed");
+        throw new Error(response.data.message || 'Login failed');
       }
     } catch (error) {
-      console.error(
-        "Login failed:",
-        error.response?.data?.message || error.message
-      );
-      throw new Error(
-        error.response?.data?.message || error.message || "Login failed!"
-      );
+      console.error('Login failed:', error.response?.data?.message || error.message);
+      throw new Error(error.response?.data?.message || 'Login failed!');
     }
   };
 
-  // Google login (via popup)
-  const loginWithGoogle = async () => {
-    try {
-      const popupWindow = window.open(
-        `${API_URL}/google/login`,
-        "Google Login",
-        "width=500,height=600"
-      );
-
-      if (popupWindow) {
-        const messageHandler = (event) => {
-          if (
-            event.origin === window.location.origin &&
-            event.data.type === "googleLoginSuccess"
-          ) {
-            window.removeEventListener("message", messageHandler);
-            popupWindow.close();
-            setUser(event.data.user);
-            localStorage.setItem("user", JSON.stringify(event.data.user));
-          }
-        };
-
-        window.addEventListener("message", messageHandler);
-      }
-    } catch (error) {
-      console.error("Google login failed:", error);
-      throw new Error("Google login failed. Please try again.");
-    }
-  };
-
-  // Google registration
-  const registerWithGoogle = () => {
-    window.location.href = `${API_URL}/google/register`;
-  };
-
-  // Logout
   const logout = async () => {
     setLoading(true);
     try {
-      await axiosInstance.post("/logout");
+      await axiosInstance.post('/logout');
     } catch (error) {
-      console.error("Logout failed:", error);
+      console.error('Logout failed:', error);
     } finally {
-      localStorage.removeItem("user");
       setUser(null);
       setLoading(false);
-      window.location.href = "/login"; // redirect
     }
   };
 
@@ -125,8 +72,6 @@ export const AuthProvider = ({ children }) => {
     loading,
     login,
     logout,
-    loginWithGoogle,
-    registerWithGoogle,
   };
 
   return (
@@ -136,5 +81,4 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
-// Custom hook to use Auth
 export const useAuth = () => useContext(AuthContext);
