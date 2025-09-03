@@ -1,8 +1,8 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import HomePage from './components/HomePage/HomePage.jsx';
 import LoginPage from './components/loginPage.jsx';
-import Signup from './components/signup.jsx';   // ✅ import signup
-import DocumentUpload from './components/upload.jsx';   // ✅ import upload
+import Signup from './components/Signup.jsx';   // ✅ import signup
+import DocumentUpload from './components/Upload.jsx';   // ✅ import upload
 import Dashboard from './components/Dashboard/dashboard.jsx';
 import ProtectedRoute from './components/protectedRoute.jsx';
 import { useAuth } from './contexts/AuthContexts.jsx';

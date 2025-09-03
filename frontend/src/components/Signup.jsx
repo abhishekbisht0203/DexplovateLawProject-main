@@ -1,20 +1,12 @@
+// src/components/Signup.jsx
 "use client";
 
 import { useState, useEffect } from "react";
 import {
   Eye,
   EyeOff,
-  User,
-  Mail,
-  Lock,
-  Phone,
-  Shield,
-  Building,
-  MapPin,
-  FileText,
   CheckCircle,
   AlertCircle,
-  ArrowRight,
   ArrowLeft,
   Loader2,
 } from "lucide-react";
@@ -24,7 +16,6 @@ const Signup = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showRePassword, setShowRePassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const [userId, setUserId] = useState(null);
   const [passwordValidation, setPasswordValidation] = useState({
     length: false,
     uppercase: false,
@@ -45,12 +36,9 @@ const Signup = () => {
   });
   const [validationErrors, setValidationErrors] = useState({});
 
-  // Backend API URL
   const API_BASE_URL = "http://localhost:5000/api/auth";
 
-  // Handles real-time validation checks for email, firm name, and license number
   useEffect(() => {
-    // Debounce function to limit API calls
     const debounce = (func, delay) => {
       let timeoutId;
       return (...args) => {
@@ -85,13 +73,11 @@ const Signup = () => {
       }
     }, 500);
 
-    // Call debounced function when relevant form data changes
     debouncedCheck('email', formData.email);
     debouncedCheck('firmName', formData.firmName);
     debouncedCheck('licenseNumber', formData.licenseNumber);
   }, [formData.email, formData.firmName, formData.licenseNumber]);
 
-  // Validate password requirements on password change
   useEffect(() => {
     const password = formData.password;
     const validation = {
@@ -110,7 +96,6 @@ const Signup = () => {
       ...prev,
       [name]: type === "checkbox" ? checked : value,
     }));
-    // Clear validation error when user starts typing again
     if (validationErrors[name]) {
       setValidationErrors((prev) => ({ ...prev, [name]: "" }));
     }
@@ -136,7 +121,6 @@ const Signup = () => {
       errors.password = "Password must meet all requirements";
     }
 
-    // Check for existing frontend errors first
     if (Object.keys(errors).length > 0) {
       setValidationErrors(errors);
       setIsLoading(false);
@@ -156,15 +140,10 @@ const Signup = () => {
       });
 
       const data = await response.json();
-      if (data.success) {
-        setUserId(data.data.userId);
+      if (response.ok) {
         setCurrentStep(2);
       } else {
-        const apiErrors = {};
-        data.errors.forEach(err => {
-          apiErrors[err.field] = err.message;
-        });
-        setValidationErrors(apiErrors);
+        setValidationErrors(data.errors || { general: data.message });
       }
     } catch (error) {
       console.error("Registration Step 1 Error:", error);
@@ -183,7 +162,6 @@ const Signup = () => {
     if (!formData.firmAddress) errors.firmAddress = "Firm address is required";
     if (!formData.licenseNumber) errors.licenseNumber = "License number is required";
     
-    // Check for existing frontend errors
     if (Object.keys(errors).length > 0) {
       setValidationErrors(errors);
       setIsLoading(false);
@@ -195,21 +173,16 @@ const Signup = () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId: userId,
           firmName: formData.firmName,
           firmAddress: formData.firmAddress,
           licenseNumber: formData.licenseNumber,
         }),
       });
       const data = await response.json();
-      if (data.success) {
+      if (response.ok) {
         setCurrentStep(3);
       } else {
-        const apiErrors = {};
-        data.errors.forEach(err => {
-          apiErrors[err.field] = err.message;
-        });
-        setValidationErrors(apiErrors);
+        setValidationErrors(data.errors || { general: data.message });
       }
     } catch (error) {
       console.error("Registration Step 2 Error:", error);
@@ -221,7 +194,6 @@ const Signup = () => {
 
   const handleFinalSubmit = () => {
     console.log("Registration complete, redirecting to dashboard...");
-    // Implement actual dashboard redirection here
   };
 
   const prevStep = () => {

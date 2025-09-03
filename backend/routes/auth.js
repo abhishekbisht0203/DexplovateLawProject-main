@@ -1,274 +1,275 @@
 const express = require('express');
-const User = require('../models/User'); 
-const { validateRegistrationStep1, validateRegistrationStep2 } = require('../middleware/validation');
+const { User } = require('../models/User'); // Ensure your User model is correct
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+const {
+  validateRegistrationStep1,
+  validateRegistrationStep2,
+} = require('../middleware/validation');
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || "supersecretkey";
+const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey';
 
-// Middleware to verify JWT token from Authorization header or cookie
+// ------------------ JWT Middleware ------------------ //
 const verifyUser = (req, res, next) => {
+  try {
     const authHeader = req.headers.authorization;
-    const token = authHeader?.startsWith("Bearer ") ? authHeader.split(" ")[1] : req.cookies?.token;
+    const token = authHeader?.startsWith('Bearer ')
+      ? authHeader.split(' ')[1]
+      : req.cookies?.token;
 
     if (!token) {
-        return res.status(401).json({ success: false, message: "Not authenticated" });
+      return res.status(401).json({
+        success: false,
+        message: 'No active session found',
+      });
     }
 
-    try {
-        const decoded = jwt.verify(token, JWT_SECRET);
-        req.user = decoded;
-        next();
-    } catch (err) {
-        return res.status(403).json({ success: false, message: "Invalid or expired token" });
-    }
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    return res.status(403).json({
+      success: false,
+      message: 'Session invalid or expired',
+    });
+  }
 };
 
-// ------------------ AUTH ROUTES ------------------ //
+// ------------------ LOGIN ------------------ //
+router.post('/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
 
-// Step 1: Register user with personal information
-router.post('/register/step1', validateRegistrationStep1, async (req, res) => {
-    try {
-        const userData = {
-            username: req.body.username,
-            email: req.body.email,
-            phoneNumber: req.body.phoneNumber,
-            password: req.body.password
-        };
-
-        const user = await User.createUser(userData);
-
-        res.status(201).json({
-            success: true,
-            message: 'User registered successfully. Please complete your firm information.',
-            data: {
-                userId: user.id,
-                username: user.username,
-                email: user.email,
-                phoneNumber: user.phone_number,
-                emailVerified: user.email_verified
-            }
-        });
-    } catch (error) {
-        console.error('Registration Step 1 Error:', error);
-
-        if (error.message === 'Email already registered') {
-            return res.status(409).json({
-                success: false,
-                message: 'Email already registered',
-                errors: [{ field: 'email', message: 'This email is already registered' }]
-            });
-        }
-
-        if (error.message === 'Phone number already registered') {
-            return res.status(409).json({
-                success: false,
-                message: 'Phone number already registered',
-                errors: [{ field: 'phoneNumber', message: 'This phone number is already registered' }]
-            });
-        }
-
-        res.status(500).json({
-            success: false,
-            message: 'Internal server error during registration'
-        });
+    const user = await User.getUserByEmail(email.toLowerCase());
+    if (!user) {
+      return res
+        .status(401)
+        .json({ success: false, message: 'Invalid email or password' });
     }
+
+    const isValidPassword = await bcrypt.compare(password, user.password_hash);
+    if (!isValidPassword) {
+      return res
+        .status(401)
+        .json({ success: false, message: 'Invalid email or password' });
+    }
+
+    const token = jwt.sign(
+      { userId: user.id, email: user.email },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production', // Use HTTPS in prod
+      sameSite: 'lax', // Fixes frontend cookie sending
+      maxAge: 24 * 60 * 60 * 1000, // 1 day
+    });
+
+    res.json({
+      success: true,
+      message: 'Login successful',
+      user: {
+        id: user.id,
+        email: user.email,
+        username: user.username,
+        firmName: user.firm_details?.firm_name || null,
+        registrationComplete:
+          user.firm_details?.registration_status === 'completed',
+      },
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    res
+      .status(500)
+      .json({ success: false, message: 'An error occurred during login' });
+  }
 });
 
-// Step 2: Complete registration with firm information
-router.post('/register/step2', validateRegistrationStep2, async (req, res) => {
-    try {
-        const { userId } = req.body;
-        const firmData = {
-            firmName: req.body.firmName,
-            firmAddress: req.body.firmAddress,
-            licenseNumber: req.body.licenseNumber
-        };
-
-        if (!userId) {
-            return res.status(400).json({
-                success: false,
-                message: 'User ID is required to complete registration'
-            });
-        }
-
-        const firm = await User.completeFirmRegistration(userId, firmData);
-
-        res.status(201).json({
-            success: true,
-            message: 'Law firm registration completed successfully!',
-            data: {
-                firmId: firm.id,
-                firmName: firm.firm_name,
-                registrationStatus: firm.registration_status
-            }
-        });
-    } catch (error) {
-        console.error('Registration Step 2 Error:', error);
-
-        if (error.message === 'Firm name already registered') {
-            return res.status(409).json({
-                success: false,
-                message: 'Firm name already registered',
-                errors: [{ field: 'firmName', message: 'This firm name is already registered' }]
-            });
-        }
-
-        if (error.message === 'License number already registered') {
-            return res.status(409).json({
-                success: false,
-                message: 'License number already registered',
-                errors: [{ field: 'licenseNumber', message: 'This license number is already registered' }]
-            });
-        }
-
-        res.status(500).json({
-            success: false,
-            message: 'Internal server error during firm registration'
-        });
-    }
-});
-
-// Check email availability
-router.post('/check-email', async (req, res) => {
-    try {
-        const { email } = req.body;
-        
-        if (!email) {
-            return res.status(400).json({
-                success: false,
-                message: 'Email is required'
-            });
-        }
-
-        const exists = await User.emailExists(email);
-        
-        res.json({
-            success: true,
-            available: !exists,
-            message: exists ? 'Email already registered' : 'Email available'
-        });
-    } catch (error) {
-        console.error('Check email error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error checking email availability'
-        });
-    }
-});
-
-// Check firm name availability
-router.post('/check-firm-name', async (req, res) => {
-    try {
-        const { firmName } = req.body;
-        
-        if (!firmName) {
-            return res.status(400).json({
-                success: false,
-                message: 'Firm name is required'
-            });
-        }
-
-        const exists = await User.firmNameExists(firmName);
-        
-        res.json({
-            success: true,
-            available: !exists,
-            message: exists ? 'Firm name already registered' : 'Firm name available'
-        });
-    } catch (error) {
-        console.error('Check firm name error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error checking firm name availability'
-        });
-    }
-});
-
-// Check license number availability
-router.post('/check-license', async (req, res) => {
-    try {
-        const { licenseNumber } = req.body;
-        
-        if (!licenseNumber) {
-            return res.status(400).json({
-                success: false,
-                message: 'License number is required'
-            });
-        }
-
-        const exists = await User.licenseNumberExists(licenseNumber);
-        
-        res.json({
-            success: true,
-            available: !exists,
-            message: exists ? 'License number already registered' : 'License number available'
-        });
-    } catch (error) {
-        console.error('Check license number error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error checking license number availability'
-        });
-    }
-});
-
-// ------------------ PROFILE ROUTES ------------------ //
-
-// Profile by ID (optional usage)
-router.get('/profile/:userId', async (req, res) => {
-    try {
-        const { userId } = req.params;
-        const user = await User.getUserById(userId); 
-
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
-        }
-
-        const { password_hash, ...userProfile } = user;
-        
-        res.json({
-            success: true,
-            data: userProfile
-        });
-    } catch (error) {
-        console.error('Get profile error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error retrieving user profile'
-        });
-    }
-});
-
-// ✅ New: Logged-in user profile (matches frontend call)
+// ------------------ PROFILE ------------------ //
 router.get('/profile', verifyUser, async (req, res) => {
-  console.log('Fetching profile for user ID:', req.user.id);
-    try {
-        const user = await User.getUserById(req.user.id);
-
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: 'User not found'
-            });
-        }
-
-        const { password_hash, ...userProfile } = user;
-
-        res.json({
-            success: true,
-            user: userProfile
-        });
-    } catch (error) {
-        console.error('Profile fetch error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Error retrieving profile'
-        });
+  try {
+    const user = await User.getUserById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
     }
+
+    const { password_hash, ...userProfile } = user;
+
+    res.json({
+      success: true,
+      data: userProfile,
+    });
+  } catch (error) {
+    console.error('Profile fetch error:', error);
+    res
+      .status(500)
+      .json({ success: false, message: 'Error fetching user profile' });
+  }
+});
+
+// ------------------ STEP 1 REGISTER ------------------ //
+router.post('/register/step1', validateRegistrationStep1, async (req, res) => {
+  try {
+    const { username, email, phoneNumber, password } = req.body;
+
+    const emailExists = await User.emailExists(email);
+    if (emailExists) {
+      return res.status(409).json({
+        success: false,
+        message: 'Email already registered',
+      });
+    }
+
+    const phoneExists = await User.phoneNumberExists(phoneNumber);
+    if (phoneExists) {
+      return res.status(409).json({
+        success: false,
+        message: 'Phone number already registered',
+      });
+    }
+
+    const user = await User.createUser({
+      username,
+      email,
+      phoneNumber,
+      password,
+      email_verified: true,
+    });
+
+    const token = jwt.sign(
+      { userId: user.id, email: user.email },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Step 1 complete. Continue with firm details.',
+      data: {
+        token,
+        userId: user.id,
+        username: user.username,
+        email: user.email,
+        phoneNumber: user.phone_number,
+      },
+    });
+  } catch (error) {
+    console.error('Step1 Registration Error:', error);
+    res
+      .status(500)
+      .json({ success: false, message: 'Error during step 1 registration' });
+  }
+});
+
+// ------------------ STEP 2 REGISTER ------------------ //
+router.post(
+  '/register/step2',
+  verifyUser,
+  validateRegistrationStep2,
+  async (req, res) => {
+    try {
+      const userId = req.user.userId;
+      const { firmName, firmAddress, licenseNumber } = req.body;
+
+      const firmNameExists = await User.firmNameExists(firmName, userId);
+      if (firmNameExists) {
+        return res.status(409).json({
+          success: false,
+          message: 'Firm name already registered',
+        });
+      }
+
+      const licenseExists = await User.licenseNumberExists(
+        licenseNumber,
+        userId
+      );
+      if (licenseExists) {
+        return res.status(409).json({
+          success: false,
+          message: 'License number already registered',
+        });
+      }
+
+      const updatedUser = await User.completeFirmRegistration(userId, {
+        firmName,
+        firmAddress,
+        licenseNumber,
+      });
+
+      if (!updatedUser) {
+        return res.status(404).json({
+          success: false,
+          message: 'User not found',
+        });
+      }
+
+      res.json({
+        success: true,
+        message: 'Firm registration completed successfully!',
+        data: {
+          firmName: updatedUser.firm_details.firm_name,
+          registrationStatus: updatedUser.firm_details.registration_status,
+        },
+      });
+    } catch (error) {
+      console.error('Step2 Registration Error:', error);
+      res
+        .status(500)
+        .json({ success: false, message: 'Error during firm registration' });
+    }
+  }
+);
+
+// ------------------ AVAILABILITY CHECKERS ------------------ //
+router.post('/check-email', async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ success: false, message: 'Email required' });
+
+    const exists = await User.emailExists(email);
+    res.json({
+      success: true,
+      available: !exists,
+    });
+  } catch (error) {
+    console.error('Check email error:', error);
+    res.status(500).json({ success: false, message: 'Error checking email' });
+  }
+});
+
+router.post('/check-firm-name', async (req, res) => {
+  try {
+    const { firmName } = req.body;
+    if (!firmName) return res.status(400).json({ success: false, message: 'Firm name required' });
+
+    const exists = await User.firmNameExists(firmName);
+    res.json({
+      success: true,
+      available: !exists,
+    });
+  } catch (error) {
+    console.error('Check firm error:', error);
+    res.status(500).json({ success: false, message: 'Error checking firm name' });
+  }
+});
+
+router.post('/check-license', async (req, res) => {
+  try {
+    const { licenseNumber } = req.body;
+    if (!licenseNumber) return res.status(400).json({ success: false, message: 'License required' });
+
+    const exists = await User.licenseNumberExists(licenseNumber);
+    res.json({
+      success: true,
+      available: !exists,
+    });
+  } catch (error) {
+    console.error('Check license error:', error);
+    res.status(500).json({ success: false, message: 'Error checking license' });
+  }
 });
 
 module.exports = router;
