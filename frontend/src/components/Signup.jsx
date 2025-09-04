@@ -30,6 +30,7 @@ const Signup = () => {
   const [validation, setValidation] = useState({});
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [token, setToken] = useState(null); // Added state for JWT token
   const navigate = useNavigate();
 
   // No longer checking for user from AuthContext to prevent errors
@@ -121,6 +122,8 @@ const Signup = () => {
       });
 
       if (response.data.success) {
+        // Store the token received from the backend
+        setToken(response.data.data.token); 
         setCurrentStep(3);
       } else {
         setError(response.data.message);
@@ -138,6 +141,11 @@ const Signup = () => {
       setError('Please fill in all firm details.');
       return;
     }
+    
+    if (!token) {
+        setError('Authentication token is missing. Please restart the registration process.');
+        return;
+    }
 
     setLoading(true);
     setError(null);
@@ -149,7 +157,8 @@ const Signup = () => {
           firmAddress: formData.firmAddress,
           licenseNumber: formData.licenseNumber,
         },
-        { withCredentials: true }
+        // Pass the token in the Authorization header
+        { headers: { Authorization: `Bearer ${token}` } }
       );
 
       if (response.data.success) {

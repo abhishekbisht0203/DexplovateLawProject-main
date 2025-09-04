@@ -131,7 +131,7 @@ const User = {
             client.release();
         }
     },
-    
+
     // Complete firm registration
     completeFirmRegistration: async (userId, firmData) => {
         const client = await pool.connect();
@@ -149,7 +149,8 @@ const User = {
                 WHERE id = $2
                 RETURNING *;
             `;
-            const result = await client.query(query, [firmDetails, userId]);
+            // The fix is here: stringify the firmDetails object
+            const result = await client.query(query, [JSON.stringify(firmDetails), userId]);
             return result.rows[0];
         } catch (error) {
             throw error;
