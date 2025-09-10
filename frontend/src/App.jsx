@@ -39,9 +39,9 @@ function App() {
       <Route 
         path="/upload" 
         element={
-          <ProtectedRoute>
+        
             <DocumentUpload />
-          </ProtectedRoute>
+          
         } 
       />
 

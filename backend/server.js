@@ -4,6 +4,12 @@ const cookieParser = require('cookie-parser');
 const dotenv = require('dotenv');
 const { registrationLimiter, generalLimiter, errorHandler } = require('./middleware/security');
 const authRoutes = require('./routes/auth');
+const uploadRoutes = require('./routes/upload');
+const caseRoutes = require('./routes/upload');
+
+// Import the database initialization functions
+const { initUserTable } = require('./models/User');
+const { Case } = require('./models/Case');
 
 dotenv.config();
 
@@ -43,11 +49,26 @@ app.use('/api/auth', generalLimiter);
 
 // Main API routes
 app.use('/api/auth', authRoutes);
+app.use('/api/upload', uploadRoutes);
+app.use('/api/cases', caseRoutes);
 
 // Error handling middleware
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+
+// Initialize tables and start the server
+const startServer = async () => {
+  try {
+    await initUserTable();
+    await Case.initCaseTable(); // Call the case table initialization function
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
+};
+
+startServer();
