@@ -1,65 +1,51 @@
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useState, useEffect, useContext } from "react";
+import React, { createContext, useContext, useState, useEffect } from "react";
 import axios from "axios";
 
-// Backend API URL from environment variables
-const API_URL = import.meta.env.VITE_API_URL;
-
-// Axios instance (with credentials for httpOnly cookie)
+// This baseURL is critical. It must match the backend route prefix exactly.
 const axiosInstance = axios.create({
-  baseURL: API_URL,
+  baseURL: "http://localhost:5000/api/auth",
   withCredentials: true,
 });
 
-// Create AuthContext
 const AuthContext = createContext();
 
-// AuthProvider component
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Check session on initial app load
+  // Check session on initial app load and verify with backend
   useEffect(() => {
     const checkAuthStatus = async () => {
       try {
-        // First try to get user from localStorage
-        const storedUser = localStorage.getItem('user');
-        if (storedUser) {
-          setUser(JSON.parse(storedUser));
-        }
-
-        // Then verify with backend
+        // Correctly using the relative path "/profile"
+        // The baseURL handles the "/api/auth" part
         const { data } = await axiosInstance.get("/profile");
         if (data.success) {
           setUser(data.data.user);
-          localStorage.setItem('user', JSON.stringify(data.data.user));
         } else {
-          throw new Error('Session invalid');
+          throw new Error('No active session found');
         }
       } catch (error) {
-        console.log("No active session found:", error.message);
-        localStorage.removeItem('user');
+        console.error("No active session found:", error.message);
         setUser(null);
       } finally {
         setLoading(false);
       }
     };
-
     checkAuthStatus();
   }, []);
 
   // Login with email/password
   const login = async (email, password) => {
     try {
+      // The path here is just "/login" because the baseURL is already set
       const response = await axiosInstance.post("/login", { email, password });
       if (response.data.success) {
         setUser(response.data.user);
-        // Store user in localStorage for persistence
-        localStorage.setItem('user', JSON.stringify(response.data.user));
         return response.data.user;
       } else {
-        throw new Error(response.data.message || 'Login failed');
+        throw new Error(response.data.message || "Login failed");
       }
     } catch (error) {
       console.error("Login failed:", error.response?.data?.message || error.message);
@@ -67,39 +53,7 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // Google login
-  const loginWithGoogle = async () => {
-    try {
-      const popupWindow = window.open(
-        `${API_URL}/google/login`,
-        'Google Login',
-        'width=500,height=600'
-      );
-
-      if (popupWindow) {
-        const messageHandler = async (event) => {
-          if (event.origin === window.location.origin && event.data.type === 'googleLoginSuccess') {
-            window.removeEventListener('message', messageHandler);
-            popupWindow.close();
-            setUser(event.data.user);
-            localStorage.setItem('isAuthenticated', 'true');
-          }
-        };
-
-        window.addEventListener('message', messageHandler);
-      }
-    } catch (error) {
-      console.error('Google login failed:', error);
-      throw new Error('Google login failed. Please try again.');
-    }
-  };
-
-  // Google registration
-  const registerWithGoogle = () => {
-    window.location.href = `${API_URL}/google/register`;
-  };
-
-    // Logout
+  // Logout
   const logout = async () => {
     setLoading(true);
     try {
@@ -107,13 +61,19 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error("Logout failed:", error);
     } finally {
-      // Always clear local storage and state, even if the logout request fails
-      localStorage.removeItem('user');
       setUser(null);
       setLoading(false);
-      // Redirect to login page
-      window.location.href = '/login';
+      window.location.href = "/login";
     }
+  };
+  
+  // Placeholder functions for social logins
+  const loginWithGoogle = () => {
+    window.open(`${axiosInstance.defaults.baseURL}/google`, "_blank", "width=500,height=600");
+  };
+
+  const registerWithGoogle = () => {
+    window.open(`${axiosInstance.defaults.baseURL}/google`, "_blank", "width=500,height=600");
   };
 
   const value = {
@@ -125,11 +85,7 @@ export const AuthProvider = ({ children }) => {
     registerWithGoogle,
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {!loading && children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{!loading && children}</AuthContext.Provider>;
 };
 
 // Custom hook to use Auth

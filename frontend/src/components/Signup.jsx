@@ -426,6 +426,18 @@ const Signup = () => {
           <p className="text-gray-500">Step {currentStep} of 3: {currentStep === 1 ? 'Personal Information' : currentStep === 2 ? 'Verify OTP' : 'Professional Information'}</p>
         </div>
         {renderStep()}
+        <div className="mt-6 text-center">
+  <p className="text-sm text-gray-600">
+    Already have an account?{" "}
+    <Link
+      to="/login"
+      className="text-teal-600 font-semibold hover:underline"
+    >
+      Login
+    </Link>
+  </p>
+</div>
+
       </div>
     </div>
   );
